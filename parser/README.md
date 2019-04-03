@@ -1,6 +1,6 @@
-How to use: \n
-	cmake CMakeLists.txt \n
-	make \n
-	./untitled \n
+How to use:  
+	cmake CMakeLists.txt   
+	make   
+	./untitled   
 As the result you will get index.html which is just copy of google.com page
 
