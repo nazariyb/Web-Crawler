@@ -54,14 +54,14 @@ int main()
     // Run our HTTP GET command, capture the HTTP response code, and clean up.
     curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-    curl_easy_cleanup(curl);
 
     if (httpCode == 200) {
         std::cout << "\nGot successful response from " << url << std::endl;
         std::cout<<*httpData<<std::endl;
         std::ofstream outfile;
-        outfile.open("/home/yura/CLionProjects/parser/index.html");
+        outfile.open("/home/yura/CLionProjects/src/index.html");
         outfile<<*httpData<<std::endl;
     }
+    curl_easy_cleanup(curl);
     return 0;
 }
