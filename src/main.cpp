@@ -2,10 +2,11 @@
 #include <iostream>
 #include <memory>
 #include <string>
-
+#include <set>
 #include <curl/curl.h>
 #include <jsoncpp/json/json.h>
 #include <fstream>
+#include <regex>
 
 namespace
 {
@@ -20,10 +21,16 @@ namespace
         return totalBytes;
     }
 }
+std::vector<std::string> extract_hyperlinks( std::string text )
+{
+    static const std::regex hl_regex( "<a href=\"(.*?)\"", std::regex_constants::icase  ) ;
 
+    return { std::sregex_token_iterator( text.begin(), text.end(), hl_regex, 1 ),
+             std::sregex_token_iterator{} } ;
+}
 int main()
 {
-    const std::string url("http://date.jsontest.com/");
+    const std::string url("https://www.pravda.com/");
 
     CURL* curl = curl_easy_init();
 
@@ -58,13 +65,18 @@ int main()
 
     if (httpCode == 200) {
         std::cout << "\nGot successful response from " << url << std::endl;
-        Json::Value value;
-        Json::Reader reader;
-        reader.parse(*httpData,value);
-        std::cout << value.get("milliseconds_since_epoch",value);
         std::ofstream outfile;
-        outfile.open("/home/yura/CLionProjects/parser/index.html");
-        outfile<<*httpData<<std::endl;
+        outfile.open("/home/yura/CLionProjects/parser/links_to_parse.txt",std::ios_base::app);
+        std::vector<std::string> links = extract_hyperlinks(*httpData);
+        std::string final_url;
+        for (const auto &link : links) {
+            final_url = "";
+            if (link[0] == '/')
+                final_url = url + link.substr(1,link.size());
+            else
+                final_url = link;
+            outfile<< final_url<<std::endl;
+        }
     }
     return 0;
 }
