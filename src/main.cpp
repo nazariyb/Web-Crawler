@@ -8,31 +8,42 @@
 #include <fstream>
 #include <regex>
 
-namespace
-{
-    std::size_t callback(
-            const char* in,
+namespace {
+    std::size_t callback (
+            const char *in,
             std::size_t size,
             std::size_t num,
-            std::string* out)
+            std::string *out)
     {
         const std::size_t totalBytes(size * num);
         out->append(in, totalBytes);
         return totalBytes;
     }
 }
-std::vector<std::string> extract_hyperlinks( std::string text )
-{
-    static const std::regex hl_regex( "<a href=\"(.*?)\"", std::regex_constants::icase  ) ;
 
-    return { std::sregex_token_iterator( text.begin(), text.end(), hl_regex, 1 ),
-             std::sregex_token_iterator{} } ;
+std::vector<std::string> extract_hyperlinks (std::string text)
+{
+    static const std::regex hl_regex("<a href=\"(.*?)\"", std::regex_constants::icase);
+//                                   "<a href="(.*?)""
+    return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
+            std::sregex_token_iterator{}};
 }
-int main()
-{
-    const std::string url("https://www.pravda.com/");
 
-    CURL* curl = curl_easy_init();
+std::vector<std::string> extract_paragraphs (std::string text)
+{
+//    static const std::regex hl_regex("<p class=\"css-1ygdjhk evys1bk0\">(.*?)</p>", std::regex_constants::icase);
+    static const std::regex hl_regex("<p>(.*?)</p>", std::regex_constants::icase);
+
+    return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
+            std::sregex_token_iterator{}};
+}
+
+int main ()
+{
+//    const std::string url("https://www.nytimes.com/");
+    const std::string url("https://awoiaf.westeros.org/index.php/Aegon_II_Targaryen");
+
+    CURL *curl = curl_easy_init();
 
     // Set remote URL.
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
@@ -62,20 +73,24 @@ int main()
     curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
     curl_easy_cleanup(curl);
-
+    printf("response: %d\n", httpCode);
     if (httpCode == 200) {
         std::cout << "\nGot successful response from " << url << std::endl;
         std::ofstream outfile;
-        outfile.open("/home/yura/CLionProjects/parser/links_to_parse.txt",std::ios_base::app);
+        outfile.open("../links_to_parse.txt", std::ios_base::app);
         std::vector<std::string> links = extract_hyperlinks(*httpData);
+        std::vector<std::string> paragraphs = extract_paragraphs(*httpData);
         std::string final_url;
         for (const auto &link : links) {
             final_url = "";
             if (link[0] == '/')
-                final_url = url + link.substr(1,link.size());
+                final_url = url + link.substr(1, link.size());
             else
                 final_url = link;
-            outfile<< final_url<<std::endl;
+            outfile << final_url << std::endl;
+        }
+        for (const auto &p : paragraphs) {
+            outfile << p << std::endl;
         }
     }
     return 0;
