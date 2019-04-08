@@ -1,10 +1,7 @@
 #include <cstdint>
 #include <iostream>
-#include <memory>
 #include <string>
-#include <set>
 #include <curl/curl.h>
-#include <jsoncpp/json/json.h>
 #include <fstream>
 #include <regex>
 
@@ -32,16 +29,16 @@ std::vector<std::string> extract_hyperlinks (std::string text)
 std::vector<std::string> extract_paragraphs (std::string text)
 {
 //    static const std::regex hl_regex("<p class=\"css-1ygdjhk evys1bk0\">(.*?)</p>", std::regex_constants::icase);
-    static const std::regex hl_regex("<p>(.*?)</p>", std::regex_constants::icase);
+    static const std::regex hl_regex("<p>(.*?)\n</p>", std::regex_constants::icase);
 
     return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
             std::sregex_token_iterator{}};
 }
 
-int main ()
+void parse_links(std::string url,int param)
 {
 //    const std::string url("https://www.nytimes.com/");
-    const std::string url("https://awoiaf.westeros.org/index.php/Aegon_II_Targaryen");
+    const std::string adit("https://awoiaf.westeros.org/");
 
     CURL *curl = curl_easy_init();
 
@@ -77,21 +74,30 @@ int main ()
     if (httpCode == 200) {
         std::cout << "\nGot successful response from " << url << std::endl;
         std::ofstream outfile;
-        outfile.open("../links_to_parse.txt", std::ios_base::app);
-        std::vector<std::string> links = extract_hyperlinks(*httpData);
-        std::vector<std::string> paragraphs = extract_paragraphs(*httpData);
-        std::string final_url;
-        for (const auto &link : links) {
-            final_url = "";
-            if (link[0] == '/')
-                final_url = url + link.substr(1, link.size());
-            else
-                final_url = link;
-            outfile << final_url << std::endl;
-        }
-        for (const auto &p : paragraphs) {
-            outfile << p << std::endl;
+        if (param == 0) {
+            outfile.open("../links_to_parse.txt", std::ios_base::app);
+            std::vector<std::string> links = extract_hyperlinks(*httpData);
+            for (const auto &link : links)
+                if (link.find("/index.php/") != std::string::npos && link.find(':') == std::string::npos)
+                    outfile << adit + link.substr(1, link.size()) << std::endl;
+        } else{
+            std::string final_str;
+            std::string name = url.substr(url.find_last_of('/') + 1);
+            std::string file_name;
+            file_name.append("../");
+            file_name.append(name);
+            file_name.append(".txt");
+            outfile.open(file_name, std::ios_base::app);
+            std::vector<std::string> links = extract_paragraphs(*httpData);
+            for (const auto &link : links) {
+                final_str = "";
+                std::regex tags(R"(<("[^"]*?"|'[^']*?'|[^'">])*>)");
+                final_str = std::regex_replace(link, tags, "");
+                outfile << final_str<< std::endl;
+            }
         }
     }
-    return 0;
+}
+int main(){
+    parse_links("https://awoiaf.westeros.org/index.php/Aegon_II_Targaryen",1);
 }
