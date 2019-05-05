@@ -1,23 +1,10 @@
-#include <cstdint>
+#include <regex>
 #include <iostream>
-#include <string>
 #include <curl/curl.h>
 #include <fstream>
-#include <regex>
-#include <thread>
 
-namespace {
-    std::size_t callback (
-            const char *in,
-            std::size_t size,
-            std::size_t num,
-            std::string *out)
-    {
-        const std::size_t totalBytes(size * num);
-        out->append(in, totalBytes);
-        return totalBytes;
-    }
-}
+
+#include "domain_parser.h"
 
 std::vector<std::string> extract_hyperlinks (std::string text)
 {
@@ -35,11 +22,6 @@ std::vector<std::string> extract_paragraphs (std::string text)
     return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
             std::sregex_token_iterator{}};
 }
-
-enum PARSE_TYPE
-    {
-    LINKS, PARAGRAPHS
-    };
 
 void parse_links (std::string url, int parseType)
 {
@@ -111,35 +93,4 @@ void parse_bio (std::vector<std::string> links, int start_index, int step)
     for (int i = start_index; i < start_index + step; ++i) {
         parse_links(links[i], PARSE_TYPE::PARAGRAPHS);
     }
-}
-
-int main ()
-{
-    int threads_number = 8;
-    parse_links("https://awoiaf.westeros.org/index.php/List_of_characters", 0);
-    std::ifstream links_file("../links_to_parse.txt");
-    std::vector<std::string> links;
-    std::string temp;
-
-    while (getline(links_file, temp)) {
-        links.push_back(temp);
-    }
-    links_file.close();
-
-    std::vector<std::thread> threads;
-    std::cout << links[0] << std::endl;
-    int thread_step = links.size() / threads_number;
-    int start = 0;
-
-    for (int i = 0; i < threads_number - 1; ++i) {
-        threads.emplace_back(parse_bio, links, start, thread_step);
-        start += threads_number + 1;
-    }
-    threads.emplace_back(parse_bio, links, start, links.size() - start);
-
-    for (auto &t: threads) {
-        t.join();
-    }
-
-    //    parse_links("https://awoiaf.westeros.org/index.php/Aegon_II_Targaryen", 1);
 }

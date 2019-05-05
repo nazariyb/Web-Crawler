@@ -1,0 +1,5 @@
+.idea/
+cmake-build-debug/
+data/
+links_to_parse.txt
+WebCrawler.pptx
