@@ -5,141 +5,62 @@
 #include <fstream>
 #include <regex>
 #include <thread>
+#include <boost/filesystem.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include "../dependencies/TF_IDF.h"
+#include "domain_parser.h"
 
-namespace {
-    std::size_t callback (
-            const char *in,
-            std::size_t size,
-            std::size_t num,
-            std::string *out)
-    {
-        const std::size_t totalBytes(size * num);
-        out->append(in, totalBytes);
-        return totalBytes;
-    }
-}
-
-std::vector<std::string> extract_hyperlinks (std::string text)
+vectorString read_file (std::ifstream& file)
 {
-    static const std::regex hl_regex("<a href=\"(.*?)\"", std::regex_constants::icase);
-    //                                   "<a href="(.*?)""
-    return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
-            std::sregex_token_iterator{}};
-}
-
-std::vector<std::string> extract_paragraphs (std::string text)
-{
-    //    static const std::regex hl_regex("<p class=\"css-1ygdjhk evys1bk0\">(.*?)</p>", std::regex_constants::icase);
-    static const std::regex hl_regex("<p>(.*?)\n</p>", std::regex_constants::icase);
-
-    return {std::sregex_token_iterator(text.begin(), text.end(), hl_regex, 1),
-            std::sregex_token_iterator{}};
-}
-
-enum PARSE_TYPE
-    {
-    LINKS, PARAGRAPHS
-    };
-
-void parse_links (std::string url, int parseType)
-{
-    //    const std::string url("https://www.nytimes.com/");
-    const std::string domain("https://awoiaf.westeros.org/");
-
-    CURL *curl = curl_easy_init();
-
-    // Set remote URL.
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-
-    // Don't bother trying IPv6, which would increase DNS resolution time.
-    curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-
-    // Don't wait forever, time out after 10 seconds.
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-
-    // Follow HTTP redirects if necessary.
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    // Response information.
-    int httpCode(0);
-    auto *httpData(new std::string());
-
-    // Hook up data handling function.
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
-
-    // Hook up data container (will be passed as the last parameter to the
-    // callback handling function).  Can be any pointer type, since it will
-    // internally be passed as a void pointer.
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, httpData);
-
-    // Run our HTTP GET command, capture the HTTP response code, and clean up.
-    curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-    curl_easy_cleanup(curl);
-    printf("response: %d\n", httpCode);
-    if (httpCode == 200) {
-        std::cout << "\nGot successful response from " << url << std::endl;
-        std::ofstream outfile;
-        if (parseType == PARSE_TYPE::LINKS) {
-            outfile.open("../links_to_parse.txt", std::ios_base::app);
-            std::vector<std::string> links = extract_hyperlinks(*httpData);
-            for (const auto &link : links)
-                if (link.find("/index.php/") != std::string::npos && link.find(':') == std::string::npos)
-                    outfile << domain + link.substr(1, link.size()) << std::endl;
-        } else {
-            std::string final_str;
-            std::string name = url.substr(url.find_last_of('/') + 1);
-            std::string file_name;
-            file_name.append("../data/");
-            file_name.append(name);
-            file_name.append(".txt");
-            outfile.open(file_name, std::ios_base::app);
-            std::vector<std::string> links = extract_paragraphs(*httpData);
-            for (const auto &link : links) {
-                final_str = "";
-                std::regex tags(R"(<("[^"]*?"|'[^']*?'|[^'">])*>)");
-                final_str = std::regex_replace(link, tags, "");
-                outfile << final_str << std::endl;
-            }
-        }
-        outfile.close();
-    }
-}
-
-void parse_bio (std::vector<std::string> links, int start_index, int step)
-{
-    for (int i = start_index; i < start_index + step; ++i) {
-        parse_links(links[i], PARSE_TYPE::PARAGRAPHS);
-    }
+    vectorString file_strings;
+    std::string temp;
+    while (getline(file, temp))
+    file_strings.push_back(temp);
+    return file_strings;
 }
 
 int main ()
 {
-    int threads_number = 8;
-    parse_links("https://awoiaf.westeros.org/index.php/List_of_characters", 0);
-    std::ifstream links_file("../links_to_parse.txt");
-    std::vector<std::string> links;
-    std::string temp;
+    //    int threads_number = 8;
+    //    parse_links(std::string{"https://awoiaf.westeros.org/index.php/List_of_characters"}, static_cast<PARSE_TYPE>(0));
+    //    std::ifstream links_file("../links_to_parse.txt");
+    //    std::vector<std::string> links;
+    //    std::string temp;
+    //
+    //    while (getline(links_file, temp)) {
+    //        links.push_back(temp);
+    //    }
+    //    links_file.close();
+    //
+    //    std::vector<std::thread> threads;
+    //    std::cout << links[0] << std::endl;
+    //    int thread_step = links.size() / threads_number;
+    //    int start = 0;
 
-    while (getline(links_file, temp)) {
-        links.push_back(temp);
+    //    for (int i = 0; i < threads_number - 1; ++i) {
+    //        threads.emplace_back(parse_bio, links, start, thread_step);
+    //        start += threads_number + 1;
+    //    }
+    //    threads.emplace_back(parse_bio, links, start, links.size() - start);
+    //
+    //    for (auto &t: threads) {
+    //        t.join();
+    //    }
+
+    boost::filesystem::path data_dir("../test_data");
+    std::vector<std::pair<std::string, vectorString>> files;
+    for (auto &entry : boost::make_iterator_range(boost::filesystem::directory_iterator(data_dir), {})) {
+        std::ifstream file_to_read(entry.path().string());
+        files.emplace_back(std::make_pair(entry.path().string(), read_file(file_to_read)));
+        file_to_read.close();
     }
-    links_file.close();
 
-    std::vector<std::thread> threads;
-    std::cout << links[0] << std::endl;
-    int thread_step = links.size() / threads_number;
-    int start = 0;
-
-    for (int i = 0; i < threads_number - 1; ++i) {
-        threads.emplace_back(parse_bio, links, start, thread_step);
-        start += threads_number + 1;
+    TF_IDF tfidf{files};
+    tfidf.compute();
+    for (auto& p: tfidf.files_frequencies) {
+        std::cout << "FILENAME: " << p.first << std::endl;
+        for (size_t i = 0; i < tfidf.unique_words_list.size(); ++i) {
+            std::cout << tfidf.unique_words_list[i] << " : " << p.second[i] << std::endl;
+        }
     }
-    threads.emplace_back(parse_bio, links, start, links.size() - start);
-
-    for (auto &t: threads) {
-        t.join();
-    }
-
-    //    parse_links("https://awoiaf.westeros.org/index.php/Aegon_II_Targaryen", 1);
 }

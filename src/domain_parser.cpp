@@ -23,7 +23,7 @@ std::vector<std::string> extract_paragraphs (std::string text)
             std::sregex_token_iterator{}};
 }
 
-void parse_links (std::string url, int parseType)
+void parse_links (std::string url, PARSE_TYPE parseType)
 {
     //    const std::string url("https://www.nytimes.com/");
     const std::string domain("https://awoiaf.westeros.org/");
