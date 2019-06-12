@@ -3,7 +3,6 @@
 #include <curl/curl.h>
 #include <fstream>
 
-
 #include "domain_parser.h"
 
 std::vector<std::string> extract_hyperlinks (std::string text)
@@ -65,13 +64,10 @@ void parse_links (std::string url, PARSE_TYPE parseType)
         if (parseType == PARSE_TYPE::LINKS) {
             outfile.open("../links_to_parse.txt", std::ios_base::app);
             std::vector<std::string> links = extract_hyperlinks(*httpData);
-            int links_to_parse = 100;
             for (const auto &link : links) {
-                if (links_to_parse == 0) break;
                 if (link.find("/index.php/") != std::string::npos && link.find(':') == std::string::npos)
                     outfile << domain + link.substr(1, link.size()) << std::endl;
-                 --links_to_parse;
-                    }
+            }
         } else {
             std::string final_str;
             std::string name = url.substr(url.find_last_of('/') + 1);

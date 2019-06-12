@@ -5,7 +5,6 @@
 #include <vector>
 #include <map>
 #include <set>
-#include <Eigen/Dense>
 #include <cmath>
 #include <boost/tokenizer.hpp>
 #include "TF_IDF.h"
