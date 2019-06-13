@@ -1,0 +1,3 @@
+data_folder  =  ../test_data
+result_per_file = ../words/per_file
+result_total = ../words

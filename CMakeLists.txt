@@ -31,9 +31,12 @@ add_executable(${SEARCHER}
         dependencies/TF_IDF.cpp dependencies/TF_IDF.h
         dependencies/reader/reader.cpp dependencies/reader/word_usings.h
         dependencies/reader/conf_reader.cpp dependencies/reader/conf_reader.h
-        dependencies/reader/file_reader.cpp dependencies/reader/file_reader.h)
+        dependencies/reader/file_reader.cpp dependencies/reader/file_reader.h
+        dependencies/reader/reader.cpp dependencies/reader/reader.h
+        dependencies/concurrancy_helpers/map_manipulation.cpp dependencies/concurrancy_helpers/map_manipulation.h
+        dependencies/reader/file_writer.cpp dependencies/reader/file_writer.h)
 
-target_link_libraries(${PARSER}
+target_link_libraries(${SEARCHER}
         ${Boost_FILESYSTEM_LIBRARY}
         ${Boost_SYSTEM_LIBRARY}
         ${Boost_LOCALE_LIBRARY}

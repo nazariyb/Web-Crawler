@@ -4,9 +4,9 @@
 #include <qt5/QtCore/QThreadPool>
 #include <atomic>
 
-#include "../dependencies/thread_safe_queue.h"
-#include "../dependencies/function_wrapper.h"
-#include "main_config.h"
+#include "thread_safe_queue.h"
+#include "function_wrapper.h"
+#include "../reader/word_usings.h"
 
 class Task : public QRunnable
     {

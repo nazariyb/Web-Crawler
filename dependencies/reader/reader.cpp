@@ -15,36 +15,24 @@
 #include <mutex>
 #include <string>
 #include <boost/asio.hpp>
+#include <boost/lexical_cast.hpp>
 #include <qt5/QtCore/QThreadPool>
+#include <TF_IDF.h>
 
+#include "reader.h"
 #include "word_usings.h"
 #include "conf_reader.h"
 #include "file_reader.h"
 #include "../concurrancy_helpers/thread_safe_queue.h"
 #include "../concurrancy_helpers/Task.h"
 #include "../concurrancy_helpers/map_manipulation.h"
+#include "../concurrancy_helpers/function_wrapper.h"
 
-inline std::chrono::steady_clock::time_point get_current_time_fenced ()
-{
-    static_assert(std::chrono::steady_clock::is_steady, "Timer should be steady (monotonic).");
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    auto res_time = std::chrono::steady_clock::now();
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    return res_time;
-}
-
-template<class D>
-inline long long to_us (const D &d)
-{
-    return std::chrono::duration_cast<std::chrono::microseconds>(d).count();
-}
-
-StringVector find_files_to_index (std::string &directory_name)
+StringVector find_files_to_index (const std::string &directory_name)
 {
     WordMap wMap;
     // iterate through text
     StringVector txt;
-    std::string extract_to{"../temp/"};
     for (boost::filesystem::recursive_directory_iterator end, dir(directory_name);
          dir != end; ++dir) {
         std::string pathname{(*dir).path().string()};
@@ -52,24 +40,16 @@ StringVector find_files_to_index (std::string &directory_name)
         if (Reader::is_txt(pathname)) {
             txt.push_back(pathname);
         }
-        if (Reader::is_archive(pathname)) {
-            try {
-                Reader::extract(pathname, extract_to);
-            } catch (...) { }
-        }
+
     }
 
-    for (boost::filesystem::recursive_directory_iterator end, dir("../temp");
-         dir != end; ++dir) {
-        std::string pathname{(*dir).path().string()};
-        if (Reader::is_txt(pathname))
-            txt.push_back(pathname);
-    }
     return txt;
 }
 
-void index_text (thread_safe_queue<std::stringstream> &stream_queue,
+void index_text (const std::string &filepath,
+                 thread_safe_queue<std::stringstream> &stream_queue,
                  thread_safe_queue<WordMap> &maps_queue,
+                 thread_safe_queue<std::pair<std::string, WordMap>> &maps_queue_not_to_merge,
                  std::atomic_int &threads_finished,
                  std::atomic_int &threads_to_be_finished,
                  QThreadPool &pool)
@@ -88,6 +68,13 @@ void index_text (thread_safe_queue<std::stringstream> &stream_queue,
             // normalize encoding
             text = boost::locale::normalize(temp);
 
+////            if word is actually a number, skip it
+//            try {
+//                boost::lexical_cast<double>(text);
+//                continue;
+//            }
+//            catch (boost::bad_lexical_cast &) {}
+
             // bound text by words
             ssegment_index map(word, text.begin(), text.end());
             map.rule(word_any);
@@ -102,11 +89,13 @@ void index_text (thread_safe_queue<std::stringstream> &stream_queue,
             ++threads_finished;
             if (threads_finished == threads_to_be_finished) {
                 maps_queue.push(*wMap);
+                maps_queue_not_to_merge.push(std::pair<std::string, WordMap>{filepath, *wMap});
             }
             return;
         }
         if (!wMap->empty()) {
             maps_queue.push(*wMap);
+            maps_queue_not_to_merge.push(std::pair<std::string, WordMap>{filepath, *wMap});
             auto f = new function_wrapper([&maps_queue] () { merge_two_maps(maps_queue); });
             auto t = new Task(*f);
             pool.start(t);
@@ -114,8 +103,7 @@ void index_text (thread_safe_queue<std::stringstream> &stream_queue,
     }
 }
 
-
-int main (int argc, char **argv)
+CountedWords read_and_count (const std::string &directory_name)
 {
     // Create system default locale
     boost::locale::generator gen;
@@ -124,37 +112,9 @@ int main (int argc, char **argv)
     std::wcout.imbue(loc);
     std::ios_base::sync_with_stdio(false);
 
-    // set name of configuration file
-    std::string config_file("../config.dat");
-    if (argc >= 2) { config_file = argv[1]; }
-
-    // try to open that file
-    std::ifstream cf(config_file);
-    if (!cf.is_open()) {
-        std::cerr << "Error while opening configuration file.\n"
-                     "Check filename or path to file: "
-                  << config_file
-                  << std::endl;
-        return OPEN_FILE_ERROR;
-    }
-
-    // try to read configurations and save them to map conf
-    std::map<std::string, std::string> conf;
-    try {
-        conf = read_conf(cf, '=');
-        cf.close();
-    }
-    catch (std::exception &ex) {
-        std::cerr << "Error: " << ex.what() << std::endl;
-        return READ_FILE_ERROR;
-    }
-
     thread_safe_queue<std::stringstream> stream_queue{};
     thread_safe_queue<WordMap> maps_queue{};
-
-
-    std::cout << "Exploring " << conf["infile"] << "..." << std::endl;
-    auto files_to_index = find_files_to_index(conf["infile"]);
+    thread_safe_queue<std::pair<std::string, WordMap>> maps_queue_not_to_merge{};
 
     std::stringstream ss;
     QThreadPool pool{};
@@ -163,24 +123,29 @@ int main (int argc, char **argv)
     pool.setMaxThreadCount(max_threads);
     std::atomic_int threads_finished{0}, threads_to_be_finished{max_threads};
 
+    auto files_to_index = find_files_to_index(directory_name);
     std::cout << "Start processing data..." << std::endl;
-
-
-    auto start_working = get_current_time_fenced();
 
     for (auto &filepath: files_to_index) {
         try {
             Reader::read_txt(filepath, ss);
             stream_queue.push(std::move(ss));
-            auto f = new function_wrapper([
-                                                  &stream_queue,
-                                                  &maps_queue,
-                                                  &threads_finished,
-                                                  &threads_to_be_finished,
-                                                  &pool]
-                                                  () {
-                index_text(stream_queue, maps_queue, threads_finished, threads_to_be_finished, pool);
-            });
+            auto f = new function_wrapper([&filepath,
+                                           &stream_queue,
+                                           &maps_queue,
+                                           &maps_queue_not_to_merge,
+                                           &threads_finished,
+                                           &threads_to_be_finished,
+                                           &pool]
+                                           () {
+                                            index_text(filepath,
+                                                       stream_queue,
+                                                       maps_queue,
+                                                       maps_queue_not_to_merge,
+                                                       threads_finished,
+                                                       threads_to_be_finished,
+                                                       pool);
+                                            });
             auto t = new Task(*f);
             pool.start(t, 1);
         }
@@ -190,38 +155,18 @@ int main (int argc, char **argv)
         }
     }
     std::cout << "Data read" << std::endl;
-    std::stringstream poison_stream{};
-    stream_queue.push(std::move(poison_stream));
+    stream_queue.push(std::move(std::stringstream{}));
 
     pool.waitForDone();
     auto wordsMap = *maps_queue.try_pop();
-    std::vector<Pair> wordsVector;
 
-    auto finish_working = get_current_time_fenced();
+    std::vector<std::pair<std::string, WordMap>> maps_to_return;
+    auto start_it = maps_to_return.begin();
+    std::cout << "here" << std::endl;
 
-    for (auto &word: wordsMap) {
-        wordsVector.emplace_back(std::move(word));
-    }
+    while (!maps_queue_not_to_merge.empty())
+    maps_to_return.push_back(*maps_queue_not_to_merge.try_pop());
 
-    //    /mnt/c/Users/3naza/Desktop/gutenberg
-    std::vector<Pair> sorted_numbers;
-    std::cout << "Sorting by numbers..." << std::endl;
-    std::copy(wordsVector.begin(), wordsVector.end(), std::back_inserter(sorted_numbers));
-    std::sort(sorted_numbers.begin(), sorted_numbers.end(), [] (Pair a, Pair b) { return a.second > b.second; });
-
-    write_results(conf["out_by_n"], sorted_numbers);
-
-    std::vector<Pair> sorted_words;
-    std::cout << "Sorting by words..." << std::endl;
-    std::copy(wordsVector.begin(), wordsVector.end(), std::back_inserter(sorted_words));
-    std::sort(sorted_words.begin(), sorted_words.end(), [] (Pair a, Pair b) {
-        return boost::locale::comparator<char, boost::locale::collator_base::secondary>().operator()(a.first,
-                                                                                                     b.first);
-    });
-
-    write_results(conf["out_by_a"], wordsVector);
-
-    std::cout << "Total time: " << to_us(finish_working - start_working) << std::endl;
-    return 0;
-
+    std::cout << "and here" << std::endl;
+    return {wordsMap, maps_to_return};
 }
